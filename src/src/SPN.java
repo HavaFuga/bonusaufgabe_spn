@@ -1,6 +1,4 @@
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
-import java.util.Random;
+import java.util.ArrayList;
 
 public class SPN {
     private int r = 4;
@@ -9,119 +7,99 @@ public class SPN {
     private int s = 32;
     private int l = 16;
     private String[] keys = new String[r+1];
-    //private ArrayList x = new ArrayList();
+    private ArrayList<String> y = new ArrayList();
     private char[] sbox = {'E', '4', 'D', '1', '2', 'F', 'B', '8', '3', 'A', '6', 'C', '5', '9', '0', '7'};
     private int[] bitpermutation = {0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15};
-    private String x = "";
-
-
-
-
 
     public static void main(String[] args) {
-        System.out.println("Hello world!");
-        new SPN("HELLo", "00010001001010001000110000000000");
+        String chiffretext = "000001001101001000001011101110000000001010001" +
+                "111100011100111111101100000010100010100001110" +
+                "10000000010011011001110010101110110000";
+        String key = "00111010100101001101011000111111";
 
-
-
+        new SPN(chiffretext, key);
     }
 
 
-    public SPN (String text, String key) {
-        // snp("0001001010001111", "00010001001010001000110000000000"); // test
-
-
-        // decrypt(createBitstring(text), key);
-        decrypt("00000100110100100000101110111000000000101000111110001110011111110110000001010001010000111010000000010011011001110010101110110000", key);
+    public SPN (String chiffretext, String key) {
+        //System.out.println(snp("0001001010001111", "00010001001010001000110000000000"));
+        //snp("0001001010001111", "00010001001010001000110000000000");
+        decrypt(chiffretext, key);
     }
 
     private void decrypt(String chiffretext, String key) {
         String text = "";
 
-        String random = generateRandomBitString();
+        // y-1 die ersten 16
+        calculateY(chiffretext);
+        String iv = y.get(0);
 
-        System.out.println("random " + random);
-
-        for (int i = 0; i < chiffretext.length(); i+= l) {
-            String block = chiffretext.substring(i, Math.min(i + l, chiffretext.length()));
-            String bitAddition = Integer.toBinaryString(Integer.parseInt(random, 2) + i / l);
-
-            while (bitAddition.length() < l) {
-                bitAddition = "0" + bitAddition;
+        for (int i = 0; i < chiffretext.length()/l -1; i++) {
+            String mod  = String.valueOf((int) ((Integer.parseInt(iv, 2) + i) % Math.pow(2, l)));
+            mod = Integer.toBinaryString(Integer.parseInt(mod));
+            while (mod.length() < l) {
+                mod = "0" + mod; // erweitere auf 8 bit
             }
 
-            String encryptedBlock = xor(snp(bitAddition, key), block);
-            text += encryptedBlock;
+            String e = snp(mod, key);
+            text += xor(e, y.get(i+1));
         }
-
-        System.out.println("text " + text);
+        System.out.println("Text: " + decryptBitString(text));
     }
 
-    // help https://docs.oracle.com/javase/7/docs/api/java/util/Random.html#nextInt%28int%29
-    private String generateRandomBitString() {
-        int randomNumber = new Random().nextInt((int) (Math.pow(2, l)-1));
-        String binaryString = Integer.toBinaryString(randomNumber);
-        while (binaryString.length() < l) {
-            binaryString = "0" + binaryString; // erweitere dass binary gleiche Länge
+
+    public String decryptBitString(String bitString) {
+        // entferne 1 und Nullen
+        int endIndex = bitString.lastIndexOf("1");
+        String trimmedBitString = bitString.substring(0, endIndex);
+
+        String text = "";
+        for (int i = 0; i < trimmedBitString.length(); i += 8) {
+            String block = trimmedBitString.substring(i, Math.min(i + 8, trimmedBitString.length()));
+            int asciiValue = Integer.parseInt(block, 2);
+            text += (char) asciiValue;
         }
-        return binaryString;
+        return text;
     }
 
-    private String snp(String x, String key) {
+    // berechne y's vom chiffretext
+    private void calculateY(String c) {
+        for (int i = 0; i < c.length()/l; i++) {
+            this.y.add(i, c.substring(16*i, 16*i + 16));
+        }
+    }
+
+
+    // snp gemäss Folie 1.29
+    protected String snp(String x, String key) {
         // berechne Rundenschlüssel
         calculateK(key);
-        this.x = x;
-
 
         // 1. weisschritt
-        xor(x, keys[0]);
+        x = xor(x, keys[0]);
 
         for (int i = 0; i < r-1; i++ ) {
             // 2.
             // a.
-            sbox();
+            x = sbox(x);
 
             // b.
-            bitpermutation();
+            x = bitpermutation(x);
 
             // c. rundschlüssel();
-            xor(x, keys[i+1]);
+            x = xor(x, keys[i+1]);
         }
 
         // 3. letzte Runde
         // a.
-        sbox();
+        x = sbox(x);
         // c. rundschlüssel();
-        xor(x, keys[r]);
+        x = xor(x, keys[r]);
 
-        return this.x;
+        return x;
     }
 
-    private String createBitstring(String text) {
-        String bitString = "";
-
-        for (int i = 0; i < text.length(); i++) {
-
-            char character = text.charAt(i);
-            String binaryString = Integer.toBinaryString((int) character);
-            while (binaryString.length() < 8) {
-                binaryString = "0" + binaryString;
-            }
-
-            //x.add(i, binaryString);
-            bitString = bitString + binaryString;
-        }
-
-        // ... eine 1 drangehängt + so viele Nullen, bis Gesamtlänge durch 16 teilbar ist.
-        bitString = "1" + bitString;
-
-        while (bitString.length() % 16 != 0) {
-            bitString = "0" + bitString;
-        }
-
-        return bitString;
-    }
-
+    // schlüssel ausrechnen
     private void calculateK(String key) {
         // K(k, i) bestehe aus den 16 aufeinanderfolgenden Bits von k beginnend bei Position 4i
         for (int i = 0; i < r+1; i++) {
@@ -129,31 +107,34 @@ public class SPN {
         }
     }
 
-    private void bitpermutation() {
+    // bitpermutation wie auf folien
+    private String bitpermutation(String x) {
         char[] array = x.toCharArray();
         char[] permutedArray = new char[array.length];
         for (int i = 0; i < array.length; i++ ) {
             permutedArray[i] = array[bitpermutation[i]];
         }
 
-        x = new String(permutedArray);
+        return new String(permutedArray);
     }
 
-    private void sbox() {
+    // sbox wie auf folien
+    private String sbox(String x) {
         String result = "";
         for (int i = 0; i < x.length(); i +=4 ) {
             String substring = x.substring(i, i + 4);
 
             String binaryValue = Integer.toBinaryString(Character.digit(sbox[Integer.parseInt(substring, 2)], 16));
             while (binaryValue.length() < 4) {
-                binaryValue = "0" + binaryValue; // erweitere dass binary gleiche Länge
+                binaryValue = "0" + binaryValue; // binary erweitern auf 4
             }
 
             result += binaryValue;
         }
-        x = result;
+        return result;
     }
 
+    // xor mit strings
     private String xor(String a, String b)  {
         if (a.length() != b.length()) throw new RuntimeException("XOR a und b sind nicht gleichlang");
 
@@ -161,9 +142,10 @@ public class SPN {
         for (int i = 0; i < a.length(); i++) {
             result += (a.charAt(i) == b.charAt(i)) ? '0' : '1';
         }
-        this.x = result;
         return result;
     }
 
-    // fist add
+    private void encrypt() {
+        //tbd
+    }
 }
